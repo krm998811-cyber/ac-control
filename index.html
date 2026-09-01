@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="theme-color" content="#0b1720">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" href="icon-192.png">
+<title>تحكم المكيف عن بُعد</title>
+<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+<style>
+  :root {
+    --bg: #0b1720;
+    --bg-panel: #10222e;
+    --accent: #2dd4bf;
+    --accent-dim: #14524a;
+    --off-color: #64748b;
+    --on-color: #2dd4bf;
+    --text: #e6f1ef;
+    --text-dim: #7c96a0;
+    --danger: #f87171;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: radial-gradient(circle at 50% -10%, #133447 0%, var(--bg) 55%);
+    color: var(--text);
+    font-family: -apple-system, "Segoe UI", Tahoma, Arial, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 32px 20px 60px;
+  }
+
+  h1 {
+    font-size: 20px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    margin: 0 0 4px;
+    color: var(--text);
+  }
+
+  .subtitle {
+    color: var(--text-dim);
+    font-size: 13px;
+    margin-bottom: 28px;
+  }
+
+  .connection-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--bg-panel);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 999px;
+    padding: 6px 14px;
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-bottom: 24px;
+  }
+
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--off-color);
+    transition: background 0.3s ease;
+  }
+
+  .dot.live { background: var(--on-color); box-shadow: 0 0 8px var(--on-color); }
+  .dot.error { background: var(--danger); }
+
+  .ring {
+    width: 220px;
+    height: 220px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-panel);
+    border: 3px solid var(--off-color);
+    transition: border-color 0.4s ease, box-shadow 0.4s ease;
+    margin-bottom: 32px;
+    position: relative;
+  }
+
+  .ring.on {
+    border-color: var(--on-color);
+    box-shadow: 0 0 40px -8px var(--on-color);
+  }
+
+  .ring-inner {
+    text-align: center;
+  }
+
+  .state-label {
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+  }
+
+  .state-sub {
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-top: 6px;
+  }
+
+  .controls {
+    display: flex;
+    gap: 14px;
+    width: 100%;
+    max-width: 360px;
+    margin-bottom: 18px;
+  }
+
+  button {
+    flex: 1;
+    font-family: inherit;
+    font-size: 16px;
+    font-weight: 600;
+    padding: 18px 10px;
+    border-radius: 16px;
+    border: none;
+    cursor: pointer;
+    transition: transform 0.08s ease, opacity 0.2s ease;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  button:active { transform: scale(0.96); }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .btn-on {
+    background: var(--accent);
+    color: #04211d;
+  }
+
+  .btn-off {
+    background: #1c2e38;
+    color: var(--text);
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+
+  .btn-toggle {
+    width: 100%;
+    max-width: 360px;
+    background: transparent;
+    color: var(--text-dim);
+    border: 1px dashed rgba(255,255,255,0.15);
+    padding: 14px;
+    border-radius: 14px;
+    font-size: 14px;
+    font-weight: 500;
+  }
+
+  .log {
+    margin-top: 40px;
+    font-size: 11px;
+    color: var(--text-dim);
+    text-align: center;
+    max-width: 320px;
+    line-height: 1.6;
+  }
+</style>
+</head>
+<body>
+
+  <h1>تحكم المكيف</h1>
+  <div class="subtitle">يعمل من أي مكان عبر الإنترنت</div>
+
+  <div class="connection-pill">
+    <span class="dot" id="connDot"></span>
+    <span id="connText">جاري الاتصال...</span>
+  </div>
+
+  <div class="ring" id="ring">
+    <div class="ring-inner">
+      <div class="state-label" id="stateLabel">—</div>
+      <div class="state-sub" id="stateSub">بانتظار الحالة</div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button class="btn-on" id="btnOn" disabled>تشغيل</button>
+    <button class="btn-off" id="btnOff" disabled>إيقاف</button>
+  </div>
+  <button class="btn-toggle" id="btnToggle" disabled>تبديل الحالة</button>
+
+  <div class="log" id="log">—</div>
+
+<script>
+  const MQTT_HOST = "281efffbd9e1453885679644f0a59686.s1.eu.hivemq.cloud";
+  const MQTT_PORT = 8884;
+  const MQTT_USER = "krm_ac_device";
+  const MQTT_PASS = "Abokrem9118";
+  const TOPIC_COMMAND = "ac/krm/command";
+  const TOPIC_STATUS = "ac/krm/status";
+
+  const connDot = document.getElementById('connDot');
+  const connText = document.getElementById('connText');
+  const ring = document.getElementById('ring');
+  const stateLabel = document.getElementById('stateLabel');
+  const stateSub = document.getElementById('stateSub');
+  const btnOn = document.getElementById('btnOn');
+  const btnOff = document.getElementById('btnOff');
+  const btnToggle = document.getElementById('btnToggle');
+  const log = document.getElementById('log');
+
+  function setButtonsEnabled(enabled) {
+    btnOn.disabled = !enabled;
+    btnOff.disabled = !enabled;
+    btnToggle.disabled = !enabled;
+  }
+
+  function renderState(isOn) {
+    if (isOn) {
+      ring.classList.add('on');
+      stateLabel.textContent = 'يعمل';
+      stateSub.textContent = 'المكيف مشغّل الآن';
+    } else {
+      ring.classList.remove('on');
+      stateLabel.textContent = 'مطفأ';
+      stateSub.textContent = 'المكيف متوقف الآن';
+    }
+  }
+
+  const client = mqtt.connect(`wss://${MQTT_HOST}:${MQTT_PORT}/mqtt`, {
+    username: MQTT_USER,
+    password: MQTT_PASS,
+    clientId: 'webctrl-' + Math.random().toString(16).slice(2),
+    reconnectPeriod: 3000,
+  });
+
+  client.on('connect', function () {
+    connDot.className = 'dot live';
+    connText.textContent = 'متصل';
+    log.textContent = 'متصل بالخادم، بانتظار حالة الجهاز...';
+    setButtonsEnabled(true);
+    client.subscribe(TOPIC_STATUS);
+  });
+
+  client.on('reconnect', function () {
+    connDot.className = 'dot';
+    connText.textContent = 'جاري إعادة الاتصال...';
+    setButtonsEnabled(false);
+  });
+
+  client.on('close', function () {
+    connDot.className = 'dot';
+    connText.textContent = 'غير متصل';
+    setButtonsEnabled(false);
+  });
+
+  client.on('error', function (err) {
+    connDot.className = 'dot error';
+    connText.textContent = 'خطأ بالاتصال';
+    log.textContent = 'تعذر الاتصال بالخادم. تحقق من الإنترنت.';
+    setButtonsEnabled(false);
+  });
+
+  client.on('message', function (topic, payload) {
+    const msg = payload.toString().trim().toLowerCase();
+    if (topic === TOPIC_STATUS) {
+      renderState(msg === 'on');
+      log.textContent = 'آخر تحديث: ' + new Date().toLocaleTimeString('ar-SA');
+    }
+  });
+
+  function sendCommand(cmd) {
+    client.publish(TOPIC_COMMAND, cmd);
+    log.textContent = 'تم إرسال الأمر: ' + (cmd === 'on' ? 'تشغيل' : cmd === 'off' ? 'إيقاف' : 'تبديل');
+  }
+
+  btnOn.addEventListener('click', () => sendCommand('on'));
+  btnOff.addEventListener('click', () => sendCommand('off'));
+  btnToggle.addEventListener('click', () => sendCommand('toggle'));
+
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').catch(() => {});
+    });
+  }
+</script>
+
+</body>
+</html>
