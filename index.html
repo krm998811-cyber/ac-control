@@ -167,12 +167,126 @@
     max-width: 320px;
     line-height: 1.6;
   }
+
+  .battery-warning {
+    display: none;
+    background: #f39c12;
+    color: #1a1a1a;
+    padding: 10px 18px;
+    border-radius: 12px;
+    font-weight: 600;
+    font-size: 13px;
+    margin-bottom: 18px;
+    max-width: 340px;
+    text-align: center;
+  }
+
+  .battery-warning.show { display: block; }
+
+  .card {
+    background: var(--bg-panel);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 16px;
+    padding: 20px;
+    margin-top: 20px;
+    width: 100%;
+    max-width: 360px;
+  }
+
+  .card h2 {
+    font-size: 15px;
+    margin: 0 0 14px;
+    color: var(--text);
+  }
+
+  .card form {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  input[type="time"], select {
+    font-family: inherit;
+    font-size: 15px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.12);
+    background: #0e1c26;
+    color: var(--text);
+  }
+
+  .days-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: flex-start;
+  }
+
+  .day-label {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    color: var(--text-dim);
+    background: #0e1c26;
+    padding: 6px 8px;
+    border-radius: 8px;
+  }
+
+  .add-btn {
+    background: var(--accent);
+    color: #04211d;
+    padding: 12px;
+    border-radius: 10px;
+    font-weight: 600;
+    font-size: 14px;
+  }
+
+  .list-item {
+    background: #0e1c26;
+    border-radius: 10px;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .list-item-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .list-item .days-text {
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+
+  .small-btn {
+    background: #2a3b46;
+    color: var(--text);
+    border: none;
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 500;
+    flex: none;
+  }
+
+  .empty-note {
+    color: var(--text-dim);
+    font-size: 12px;
+    text-align: center;
+  }
 </style>
 </head>
 <body>
 
   <h1>تحكم المكيف</h1>
   <div class="subtitle">يعمل من أي مكان عبر الإنترنت</div>
+
+  <div class="battery-warning" id="batteryWarning">⚠️ البطارية قاربت على الانتهاء - يفضل الشحن قريبًا</div>
 
   <div class="connection-pill">
     <span class="dot" id="connDot"></span>
@@ -192,6 +306,43 @@
   </div>
   <button class="btn-toggle" id="btnToggle" disabled>تبديل الحالة</button>
 
+  <div class="card">
+    <h2>إضافة منبه (وقت محدد)</h2>
+    <form id="timerForm">
+      <input type="time" id="timerTime" required>
+      <select id="timerAction">
+        <option value="0">تشغيل</option>
+        <option value="1" selected>إيقاف</option>
+        <option value="2">تبديل</option>
+      </select>
+      <button type="submit" class="add-btn">إضافة المنبه</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>المنبهات النشطة</h2>
+    <div id="timerList"><p class="empty-note">لا يوجد منبهات نشطة حاليًا</p></div>
+  </div>
+
+  <div class="card">
+    <h2>إضافة جدولة متكررة</h2>
+    <form id="scheduleForm">
+      <input type="time" id="scheduleTime" required>
+      <select id="scheduleAction">
+        <option value="0">تشغيل</option>
+        <option value="1" selected>إيقاف</option>
+        <option value="2">تبديل</option>
+      </select>
+      <div class="days-row" id="dayCheckboxes"></div>
+      <button type="submit" class="add-btn">إضافة الجدولة</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>الجداول المتكررة</h2>
+    <div id="scheduleList"><p class="empty-note">لا يوجد جداول متكررة حاليًا</p></div>
+  </div>
+
   <div class="log" id="log">—</div>
 
 <script>
@@ -199,8 +350,20 @@
   const MQTT_PORT = 8884;
   const MQTT_USER = "krm_ac_device";
   const MQTT_PASS = "Abokrem9118";
+
   const TOPIC_COMMAND = "ac/krm/command";
   const TOPIC_STATUS = "ac/krm/status";
+  const TOPIC_BATTERY = "ac/krm/battery";
+  const TOPIC_TIMER_ADD = "ac/krm/timer/add";
+  const TOPIC_TIMER_CANCEL = "ac/krm/timer/cancel";
+  const TOPIC_TIMER_LIST = "ac/krm/timer/list";
+  const TOPIC_SCHEDULE_ADD = "ac/krm/schedule/add";
+  const TOPIC_SCHEDULE_DELETE = "ac/krm/schedule/delete";
+  const TOPIC_SCHEDULE_TOGGLE = "ac/krm/schedule/toggle";
+  const TOPIC_SCHEDULE_LIST = "ac/krm/schedule/list";
+
+  const dayNamesAr = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
+  const actionNamesAr = ["تشغيل", "إيقاف", "تبديل"];
 
   const connDot = document.getElementById('connDot');
   const connText = document.getElementById('connText');
@@ -211,6 +374,20 @@
   const btnOff = document.getElementById('btnOff');
   const btnToggle = document.getElementById('btnToggle');
   const log = document.getElementById('log');
+  const batteryWarning = document.getElementById('batteryWarning');
+  const timerForm = document.getElementById('timerForm');
+  const timerList = document.getElementById('timerList');
+  const scheduleForm = document.getElementById('scheduleForm');
+  const scheduleList = document.getElementById('scheduleList');
+  const dayCheckboxes = document.getElementById('dayCheckboxes');
+
+  // بناء مربعات اختيار الأيام ديناميكيًا
+  dayNamesAr.forEach((name, idx) => {
+    const label = document.createElement('label');
+    label.className = 'day-label';
+    label.innerHTML = `<input type="checkbox" data-day="${idx}"> ${name}`;
+    dayCheckboxes.appendChild(label);
+  });
 
   function setButtonsEnabled(enabled) {
     btnOn.disabled = !enabled;
@@ -230,6 +407,45 @@
     }
   }
 
+  function renderTimers(list) {
+    if (!list || list.length === 0) {
+      timerList.innerHTML = '<p class="empty-note">لا يوجد منبهات نشطة حاليًا</p>';
+      return;
+    }
+    timerList.innerHTML = list.map(t => `
+      <div class="list-item">
+        <div class="list-item-top">
+          <span>${actionNamesAr[t.action]} الساعة ${t.time}</span>
+          <button class="small-btn" onclick="cancelTimer(${t.id})">إلغاء</button>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  function renderSchedules(list) {
+    if (!list || list.length === 0) {
+      scheduleList.innerHTML = '<p class="empty-note">لا يوجد جداول متكررة حاليًا</p>';
+      return;
+    }
+    scheduleList.innerHTML = list.map(s => {
+      const daysStr = s.days.map((v, i) => v ? dayNamesAr[i] : null).filter(Boolean).join('، ') || 'بدون أيام محددة';
+      const statusLabel = s.enabled ? 'مفعّل' : 'معطّل';
+      const toggleLabel = s.enabled ? 'تعطيل' : 'تفعيل';
+      return `
+        <div class="list-item">
+          <div class="list-item-top">
+            <span><b>${actionNamesAr[s.action]}</b> الساعة ${s.time} (${statusLabel})</span>
+          </div>
+          <span class="days-text">${daysStr}</span>
+          <div class="list-item-top">
+            <button class="small-btn" onclick="toggleSchedule(${s.id})">${toggleLabel}</button>
+            <button class="small-btn" onclick="deleteSchedule(${s.id})">حذف</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
   const client = mqtt.connect(`wss://${MQTT_HOST}:${MQTT_PORT}/mqtt`, {
     username: MQTT_USER,
     password: MQTT_PASS,
@@ -243,6 +459,9 @@
     log.textContent = 'متصل بالخادم، بانتظار حالة الجهاز...';
     setButtonsEnabled(true);
     client.subscribe(TOPIC_STATUS);
+    client.subscribe(TOPIC_BATTERY);
+    client.subscribe(TOPIC_TIMER_LIST);
+    client.subscribe(TOPIC_SCHEDULE_LIST);
   });
 
   client.on('reconnect', function () {
@@ -265,10 +484,20 @@
   });
 
   client.on('message', function (topic, payload) {
-    const msg = payload.toString().trim().toLowerCase();
+    const msg = payload.toString().trim();
+
     if (topic === TOPIC_STATUS) {
-      renderState(msg === 'on');
+      renderState(msg.toLowerCase() === 'on');
       log.textContent = 'آخر تحديث: ' + new Date().toLocaleTimeString('ar-SA');
+    }
+    else if (topic === TOPIC_BATTERY) {
+      batteryWarning.classList.toggle('show', msg.toLowerCase() === 'low');
+    }
+    else if (topic === TOPIC_TIMER_LIST) {
+      try { renderTimers(JSON.parse(msg)); } catch (e) {}
+    }
+    else if (topic === TOPIC_SCHEDULE_LIST) {
+      try { renderSchedules(JSON.parse(msg)); } catch (e) {}
     }
   });
 
@@ -280,6 +509,42 @@
   btnOn.addEventListener('click', () => sendCommand('on'));
   btnOff.addEventListener('click', () => sendCommand('off'));
   btnToggle.addEventListener('click', () => sendCommand('toggle'));
+
+  timerForm.addEventListener('submit', function (e) {
+    e.preventDefault();
+    const time = document.getElementById('timerTime').value;
+    const action = document.getElementById('timerAction').value;
+    if (!time) return;
+    client.publish(TOPIC_TIMER_ADD, `${time},${action}`);
+    log.textContent = 'تم إرسال طلب إضافة منبه';
+  });
+
+  function cancelTimer(id) {
+    client.publish(TOPIC_TIMER_CANCEL, String(id));
+    log.textContent = 'تم إرسال طلب إلغاء منبه';
+  }
+
+  scheduleForm.addEventListener('submit', function (e) {
+    e.preventDefault();
+    const time = document.getElementById('scheduleTime').value;
+    const action = document.getElementById('scheduleAction').value;
+    if (!time) return;
+    const checks = dayCheckboxes.querySelectorAll('input[type="checkbox"]');
+    let daysStr = '';
+    checks.forEach(c => { daysStr += c.checked ? '1' : '0'; });
+    client.publish(TOPIC_SCHEDULE_ADD, `${time},${action},${daysStr}`);
+    log.textContent = 'تم إرسال طلب إضافة جدولة';
+  });
+
+  function toggleSchedule(id) {
+    client.publish(TOPIC_SCHEDULE_TOGGLE, String(id));
+    log.textContent = 'تم إرسال طلب تبديل حالة جدولة';
+  }
+
+  function deleteSchedule(id) {
+    client.publish(TOPIC_SCHEDULE_DELETE, String(id));
+    log.textContent = 'تم إرسال طلب حذف جدولة';
+  }
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
