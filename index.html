@@ -362,6 +362,21 @@
       <input type="password" id="wifiPassword" placeholder="كلمة مرور جديدة (اتركه فارغًا لعدم التغيير)">
       <button type="submit" class="add-btn">حفظ وإعادة التشغيل</button>
     </form>
+ 
+    <h3 style="font-size:13px;margin:16px 0 6px;color:var(--text-dim);">معايرة زوايا السيرفو</h3>
+    <form id="anglesForm">
+      <label style="font-size:12px;color:var(--text-dim);">زاوية التشغيل
+        <input type="number" id="angleOn" min="0" max="180" required>
+      </label>
+      <label style="font-size:12px;color:var(--text-dim);">زاوية الإيقاف
+        <input type="number" id="angleOff" min="0" max="180" required>
+      </label>
+      <label style="font-size:12px;color:var(--text-dim);">زاوية الأصل (الراحة)
+        <input type="number" id="angleRest" min="0" max="180" required>
+      </label>
+      <button type="submit" class="add-btn">حفظ الزوايا</button>
+    </form>
+    <button type="button" class="small-btn" id="btnGoHome" style="margin-top:8px;width:100%;padding:10px;">🏠 اختبار الأصل (يحرك السيرفو الآن)</button>
   </div>
  
   <div class="log" id="log">—</div>
@@ -384,6 +399,9 @@
   const TOPIC_SCHEDULE_TOGGLE = "ac/krm/schedule/toggle";
   const TOPIC_SCHEDULE_LIST = "ac/krm/schedule/list";
   const TOPIC_WIFI_SET = "ac/krm/wifi_set";
+  const TOPIC_ANGLES_SET = "ac/krm/angles_set";
+  const TOPIC_SETTINGS = "ac/krm/settings";
+  const TOPIC_GO_HOME = "ac/krm/go_home";
  
   const dayNamesAr = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
   const actionNamesAr = ["تشغيل", "إيقاف", "تبديل"];
@@ -407,6 +425,11 @@
   const scheduleList = document.getElementById('scheduleList');
   const dayCheckboxes = document.getElementById('dayCheckboxes');
   const wifiForm = document.getElementById('wifiForm');
+  const anglesForm = document.getElementById('anglesForm');
+  const angleOnInput = document.getElementById('angleOn');
+  const angleOffInput = document.getElementById('angleOff');
+  const angleRestInput = document.getElementById('angleRest');
+  const btnGoHome = document.getElementById('btnGoHome');
   const btnSettings = document.getElementById('btnSettings');
   const settingsCard = document.getElementById('settingsCard');
  
@@ -524,6 +547,7 @@
     client.subscribe(TOPIC_PROTECTION);
     client.subscribe(TOPIC_TIMER_LIST);
     client.subscribe(TOPIC_SCHEDULE_LIST);
+    client.subscribe(TOPIC_SETTINGS);
   });
  
   client.on('reconnect', function () {
@@ -568,6 +592,14 @@
     }
     else if (topic === TOPIC_SCHEDULE_LIST) {
       try { renderSchedules(JSON.parse(msg)); } catch (e) {}
+    }
+    else if (topic === TOPIC_SETTINGS) {
+      try {
+        const s = JSON.parse(msg);
+        if (typeof s.on === 'number') angleOnInput.value = s.on;
+        if (typeof s.off === 'number') angleOffInput.value = s.off;
+        if (typeof s.rest === 'number') angleRestInput.value = s.rest;
+      } catch (e) {}
     }
   });
  
@@ -624,6 +656,21 @@
     const payload = pass.length > 0 ? { ssid, password: pass } : { ssid };
     client.publish(TOPIC_WIFI_SET, JSON.stringify(payload));
     log.textContent = 'تم إرسال إعدادات الواي فاي الجديدة - الجهاز سيعيد التشغيل';
+  });
+ 
+  anglesForm.addEventListener('submit', function (e) {
+    e.preventDefault();
+    const on = parseInt(angleOnInput.value, 10);
+    const off = parseInt(angleOffInput.value, 10);
+    const rest = parseInt(angleRestInput.value, 10);
+    if (isNaN(on) || isNaN(off) || isNaN(rest)) return;
+    client.publish(TOPIC_ANGLES_SET, JSON.stringify({ on, off, rest }));
+    log.textContent = 'تم إرسال الزوايا الجديدة';
+  });
+ 
+  btnGoHome.addEventListener('click', function () {
+    client.publish(TOPIC_GO_HOME, '1');
+    log.textContent = 'تم إرسال أمر تحريك السيرفو لزاوية الأصل';
   });
  
   btnSettings.addEventListener('click', function () {
