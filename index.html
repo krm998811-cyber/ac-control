@@ -205,7 +205,7 @@
     gap: 10px;
   }
  
-  input[type="time"], select {
+  input[type="time"], input[type="text"], input[type="password"], input[type="number"], select {
     font-family: inherit;
     font-size: 15px;
     padding: 10px 12px;
@@ -213,6 +213,14 @@
     border: 1px solid rgba(255,255,255,0.12);
     background: #0e1c26;
     color: var(--text);
+    width: 100%;
+    box-sizing: border-box;
+  }
+ 
+  .card form label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
   }
  
   .days-row {
@@ -344,6 +352,28 @@
     <div id="scheduleList"><p class="empty-note">لا يوجد جداول متكررة حاليًا</p></div>
   </div>
  
+  <div class="card">
+    <h2>الإعدادات</h2>
+ 
+    <h3 style="font-size:13px;margin:6px 0;color:var(--text-dim);">تغيير شبكة الواي فاي</h3>
+    <form id="wifiForm">
+      <input type="text" id="wifiSSID" placeholder="اسم الشبكة" required>
+      <input type="password" id="wifiPassword" placeholder="كلمة مرور جديدة (اتركه فارغًا لعدم التغيير)">
+      <button type="submit" class="add-btn">حفظ وإعادة التشغيل</button>
+    </form>
+ 
+    <h3 style="font-size:13px;margin:16px 0 6px;color:var(--text-dim);">معايرة زوايا السيرفو</h3>
+    <form id="anglesForm">
+      <label style="font-size:12px;color:var(--text-dim);">زاوية التشغيل
+        <input type="number" id="angleOn" min="0" max="180" required>
+      </label>
+      <label style="font-size:12px;color:var(--text-dim);">زاوية الإيقاف
+        <input type="number" id="angleOff" min="0" max="180" required>
+      </label>
+      <button type="submit" class="add-btn">حفظ الزوايا</button>
+    </form>
+  </div>
+ 
   <div class="log" id="log">—</div>
  
 <script>
@@ -363,6 +393,9 @@
   const TOPIC_SCHEDULE_DELETE = "ac/krm/schedule/delete";
   const TOPIC_SCHEDULE_TOGGLE = "ac/krm/schedule/toggle";
   const TOPIC_SCHEDULE_LIST = "ac/krm/schedule/list";
+  const TOPIC_WIFI_SET = "ac/krm/wifi_set";
+  const TOPIC_ANGLES_SET = "ac/krm/angles_set";
+  const TOPIC_SETTINGS = "ac/krm/settings";
  
   const dayNamesAr = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس", "الجمعة", "السبت"];
   const actionNamesAr = ["تشغيل", "إيقاف", "تبديل"];
@@ -385,6 +418,10 @@
   const scheduleForm = document.getElementById('scheduleForm');
   const scheduleList = document.getElementById('scheduleList');
   const dayCheckboxes = document.getElementById('dayCheckboxes');
+  const wifiForm = document.getElementById('wifiForm');
+  const anglesForm = document.getElementById('anglesForm');
+  const angleOnInput = document.getElementById('angleOn');
+  const angleOffInput = document.getElementById('angleOff');
  
   // بناء مربعات اختيار الأيام ديناميكيًا
   dayNamesAr.forEach((name, idx) => {
@@ -500,6 +537,7 @@
     client.subscribe(TOPIC_PROTECTION);
     client.subscribe(TOPIC_TIMER_LIST);
     client.subscribe(TOPIC_SCHEDULE_LIST);
+    client.subscribe(TOPIC_SETTINGS);
   });
  
   client.on('reconnect', function () {
@@ -544,6 +582,13 @@
     }
     else if (topic === TOPIC_SCHEDULE_LIST) {
       try { renderSchedules(JSON.parse(msg)); } catch (e) {}
+    }
+    else if (topic === TOPIC_SETTINGS) {
+      try {
+        const s = JSON.parse(msg);
+        if (typeof s.onAngle === 'number') angleOnInput.value = s.onAngle;
+        if (typeof s.offAngle === 'number') angleOffInput.value = s.offAngle;
+      } catch (e) {}
     }
   });
  
@@ -592,6 +637,25 @@
     log.textContent = 'تم إرسال طلب حذف جدولة';
   }
  
+  wifiForm.addEventListener('submit', function (e) {
+    e.preventDefault();
+    const ssid = document.getElementById('wifiSSID').value;
+    const pass = document.getElementById('wifiPassword').value;
+    if (!ssid) return;
+    const payload = pass.length > 0 ? { ssid, password: pass } : { ssid };
+    client.publish(TOPIC_WIFI_SET, JSON.stringify(payload));
+    log.textContent = 'تم إرسال إعدادات الواي فاي الجديدة - الجهاز سيعيد التشغيل';
+  });
+ 
+  anglesForm.addEventListener('submit', function (e) {
+    e.preventDefault();
+    const on = parseInt(angleOnInput.value, 10);
+    const off = parseInt(angleOffInput.value, 10);
+    if (isNaN(on) || isNaN(off)) return;
+    client.publish(TOPIC_ANGLES_SET, JSON.stringify({ on, off }));
+    log.textContent = 'تم إرسال زوايا السيرفو الجديدة';
+  });
+ 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('sw.js').catch(() => {});
@@ -601,4 +665,3 @@
  
 </body>
 </html>
- 
