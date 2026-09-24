@@ -360,6 +360,9 @@
     <form id="wifiForm">
       <input type="text" id="wifiSSID" placeholder="اسم الشبكة" required>
       <input type="password" id="wifiPassword" placeholder="كلمة مرور جديدة (اتركه فارغًا لعدم التغيير)">
+      <label style="font-size:12px;color:var(--text-dim);">عدد محاولات الاتصال قبل بث شبكة الإعداد
+        <input type="number" id="wifiRetries" min="1" max="20" placeholder="5">
+      </label>
       <button type="submit" class="add-btn">حفظ وإعادة التشغيل</button>
     </form>
  
@@ -652,8 +655,11 @@
     e.preventDefault();
     const ssid = document.getElementById('wifiSSID').value;
     const pass = document.getElementById('wifiPassword').value;
+    const retriesVal = document.getElementById('wifiRetries').value;
     if (!ssid) return;
-    const payload = pass.length > 0 ? { ssid, password: pass } : { ssid };
+    const payload = { ssid };
+    if (pass.length > 0) payload.password = pass;
+    if (retriesVal.length > 0) payload.retries = parseInt(retriesVal, 10);
     client.publish(TOPIC_WIFI_SET, JSON.stringify(payload));
     log.textContent = 'تم إرسال إعدادات الواي فاي الجديدة - الجهاز سيعيد التشغيل';
   });
